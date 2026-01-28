@@ -1,0 +1,169 @@
+name: Test SWE-bench Solution
+
+on:
+  push:
+    branches:
+      - 'django__django-15814-k796tb'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies at environment setup commit
+      run: |
+        set -e  # Exit on error
+        
+        # Get current commit
+        CURRENT_COMMIT=$(git rev-parse HEAD)
+        echo "Current commit: $CURRENT_COMMIT"
+        
+        # Check if we have environment_setup_commit metadata
+        ENV_SETUP_COMMIT="0fbdb9784da915fce5dcc1fe82bac9b4785749e5"
+        REPO_URL="https://github.com/django/django.git"
+        
+        # If environment_setup_commit exists and is different, fetch from original repo
+        if [ -n "$ENV_SETUP_COMMIT" ] && [ "$ENV_SETUP_COMMIT" != "$CURRENT_COMMIT" ]; then
+          echo "Adding original repository as remote..."
+          git remote add upstream "$REPO_URL" || git remote set-url upstream "$REPO_URL"
+          
+          echo "Fetching environment setup commit from original repository..."
+          git fetch upstream $ENV_SETUP_COMMIT
+          
+          echo "Checking out environment setup commit..."
+          git checkout $ENV_SETUP_COMMIT
+        fi
+        
+        # Upgrade pip
+        python -m pip install --upgrade pip
+        
+        # Install pytest for projects that use it
+        pip install pytest
+        
+        # Install the package in editable mode at environment_setup_commit
+        if [ -f "setup.py" ]; then
+          echo "Installing package with setup.py..."
+          pip install -e .
+        elif [ -f "pyproject.toml" ]; then
+          echo "Installing package with pyproject.toml..."
+          pip install -e .
+        fi
+        
+        # Install additional requirements files if they exist
+        if [ -f "requirements.txt" ]; then
+          echo "Installing requirements.txt..."
+          pip install -r requirements.txt
+        fi
+        
+        if [ -f "requirements-dev.txt" ]; then
+          echo "Installing requirements-dev.txt..."
+          pip install -r requirements-dev.txt
+        fi
+        
+        if [ -f "test-requirements.txt" ]; then
+          echo "Installing test-requirements.txt..."
+          pip install -r test-requirements.txt
+        fi
+        
+        # Return to the original commit
+        if [ -n "$ENV_SETUP_COMMIT" ] && [ "$ENV_SETUP_COMMIT" != "$CURRENT_COMMIT" ]; then
+          echo "Returning to original commit..."
+          git checkout $CURRENT_COMMIT
+        fi
+        
+        echo "Dependencies installed successfully!"
+    
+    - name: Run tests
+      run: |
+        echo "Running SWE-bench tests..."
+        echo ""
+        echo "Expected behavior:"
+        echo "  FAIL_TO_PASS tests - Should FAIL before fix, PASS after fix"
+        echo "  PASS_TO_PASS tests - Should PASS before and after fix (regression check)"
+        echo ""
+        
+        # Test configuration from dataset
+        FAIL_TO_PASS_TESTS="proxy_models.tests.ProxyModelTests.test_select_related_only"
+        PASS_TO_PASS_TESTS="proxy_models.tests.ProxyModelTests.test_abstract_base_with_model_fields proxy_models.tests.ProxyModelTests.test_basic_proxy proxy_models.tests.ProxyModelTests.test_basic_proxy_reverse proxy_models.tests.ProxyModelTests.test_concrete_model proxy_models.tests.ProxyModelTests.test_content_type proxy_models.tests.ProxyModelTests.test_correct_type_proxy_of_proxy proxy_models.tests.ProxyModelTests.test_eq proxy_models.tests.ProxyModelTests.test_filter_proxy_relation_reverse proxy_models.tests.ProxyModelTests.test_inheritance_new_table proxy_models.tests.ProxyModelTests.test_myperson_manager proxy_models.tests.ProxyModelTests.test_new_fields proxy_models.tests.ProxyModelTests.test_no_base_classes proxy_models.tests.ProxyModelTests.test_no_proxy proxy_models.tests.ProxyModelTests.test_otherperson_manager proxy_models.tests.ProxyModelTests.test_permissions_created proxy_models.tests.ProxyModelTests.test_proxy_bug proxy_models.tests.ProxyModelTests.test_proxy_delete proxy_models.tests.ProxyModelTests.test_proxy_for_model proxy_models.tests.ProxyModelTests.test_proxy_included_in_ancestors proxy_models.tests.ProxyModelTests.test_proxy_load_from_fixture proxy_models.tests.ProxyModelTests.test_proxy_model_signals proxy_models.tests.ProxyModelTests.test_proxy_update proxy_models.tests.ProxyModelTests.test_same_manager_queries proxy_models.tests.ProxyModelTests.test_select_related proxy_models.tests.ProxyModelTests.test_swappable proxy_models.tests.ProxyModelTests.test_too_many_concrete_classes proxy_models.tests.ProxyModelTests.test_user_proxy_models proxy_models.tests.ProxyModelAdminTests.test_cascade_delete_proxy_model_admin_warning proxy_models.tests.ProxyModelAdminTests.test_delete_str_in_model_admin"
+        
+        echo "FAIL_TO_PASS tests: $FAIL_TO_PASS_TESTS"
+        echo "PASS_TO_PASS tests: $PASS_TO_PASS_TESTS"
+        echo ""
+        
+        # Detect test runner - prefer Django's test runner for Django projects
+        if [ -f "tests/runtests.py" ]; then
+          echo "Detected Django project with custom test runner"
+          TEST_CMD="python tests/runtests.py --parallel=1 -v2"
+        elif [ -f "manage.py" ]; then
+          echo "Detected Django project with manage.py"
+          TEST_CMD="python manage.py test --parallel=1 -v2"
+        else
+          echo "Using pytest as default"
+          pip install pytest
+          TEST_CMD="pytest -xvs"
+        fi
+        
+        # CRITICAL: Validation to prevent running entire test suite
+        # Must have FAIL_TO_PASS tests specified from dataset
+        if [ -z "$FAIL_TO_PASS_TESTS" ]; then
+          echo "❌ CRITICAL ERROR: No FAIL_TO_PASS tests specified!"
+          echo "This would run the entire test suite, which is not allowed."
+          echo "FAIL_TO_PASS tests must be provided from the dataset."
+          exit 1
+        fi
+        
+        # Ensure test names don't look like they'll match everything
+        if [[ "$FAIL_TO_PASS_TESTS" == "test" ]] || [[ "$FAIL_TO_PASS_TESTS" == "*" ]]; then
+          echo "❌ CRITICAL ERROR: Invalid test pattern detected!"
+          echo "Test pattern '$FAIL_TO_PASS_TESTS' would run all tests."
+          exit 1
+        fi
+        
+        # Run FAIL_TO_PASS tests first (should pass after fix)
+        echo ""
+        echo "=========================================="
+        echo "Running FAIL_TO_PASS tests"
+        echo "These should FAIL before fix, PASS after fix"
+        echo "=========================================="
+        $TEST_CMD $FAIL_TO_PASS_TESTS || {
+          echo "❌ FAIL_TO_PASS tests failed!"
+          echo "Your solution did not fix the issue."
+          exit 1
+        }
+        echo "✅ FAIL_TO_PASS tests passed!"
+        
+        # Run PASS_TO_PASS tests (regression check) - only if specified
+        if [ -n "$PASS_TO_PASS_TESTS" ]; then
+          echo ""
+          echo "=========================================="
+          echo "Running PASS_TO_PASS tests (Regression Check)"
+          echo "These should PASS before and after the fix"
+          echo "=========================================="
+          $TEST_CMD $PASS_TO_PASS_TESTS || {
+            echo "❌ PASS_TO_PASS tests failed!"
+            echo "Your solution caused a regression."
+            exit 1
+          }
+          echo "✅ PASS_TO_PASS tests passed!"
+        else
+          echo ""
+          echo "ℹ️  No PASS_TO_PASS tests specified in dataset."
+          echo "   Skipping regression check."
+        fi
+        
+        echo ""
+        echo "=========================================="
+        echo "✅ All tests passed successfully!"
+        echo "Solution fixes the issue without regressions"
+        echo "=========================================="

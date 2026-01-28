@@ -1,0 +1,35 @@
+{
+  "name": "SWE-bench: django__django-15814",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "github.copilot",
+        "ms-vsliveshare.vsliveshare"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        "liveshare.guestApprovalRequired": false,
+        "liveshare.anonymousGuestApproval": "accept",
+        "liveshare.presence": true,
+        "liveshare.showReadOnlyUsersInSession": true,
+        "liveshare.joinDebugSessionOption": "Automatic",
+        "liveshare.autoShareTerminals": false
+      }
+    }
+  },
+  "postCreateCommand": "bash .devcontainer/setup.sh || echo 'Setup had some errors but continuing...'",
+  "remoteUser": "vscode",
+  "waitFor": "onCreateCommand",
+  "updateContentCommand": "echo 'Content updated'"
+}
