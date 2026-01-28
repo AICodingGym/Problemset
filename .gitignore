@@ -16,3 +16,8 @@ tests/coverage_html/
 tests/.coverage
 build/
 tests/report/
+
+# SWE-bench metadata files - kept locally only
+.swe-bench-instance.json
+.swe-bench-test.patch
+.swe-bench-gold.patch
