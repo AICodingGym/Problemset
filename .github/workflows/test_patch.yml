@@ -3,7 +3,8 @@ name: Test SWE-bench Solution
 on:
   push:
     branches:
-      - 'django__django-15814-k796tb'
+      - 'django__django-*'
+      - 'copilot/**'
   workflow_dispatch:
 
 jobs:
